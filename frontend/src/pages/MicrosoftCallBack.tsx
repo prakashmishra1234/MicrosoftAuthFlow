@@ -31,7 +31,14 @@ const MicrosoftCallBack = () => {
     const params = getParamsValue(location.search);
     axios
       .get(
-        `https://7an16zjr4a.execute-api.ap-south-1.amazonaws.com/dev/auth/microsoftres?code=${params.code}&state=${params.state}`
+        `https://7an16zjr4a.execute-api.ap-south-1.amazonaws.com/dev/auth/microsoftres`,
+        {
+          params: {
+            code: params.code,
+            state: params.state,
+            // srp_a: A.toString(16),
+          },
+        }
       )
       .then((res) => {
         console.log(res);

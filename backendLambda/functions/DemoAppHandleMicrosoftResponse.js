@@ -131,7 +131,6 @@ exports.handler = async (event) => {
       AuthFlow: "USER_SRP_AUTH",
       AuthParameters: {
         USERNAME: email,
-        SRP_A: access_token,
       },
     });
 
