@@ -6,12 +6,24 @@ const {
   ListUsersCommand,
   AdminLinkProviderForUserCommand,
   AdminInitiateAuthCommand,
+  RespondToAuthChallengeCommand,
 } = require("@aws-sdk/client-cognito-identity-provider");
+const {
+  SRPClient,
+  getNowString,
+  calculateSignature,
+} = require("amazon-user-pool-srp-client");
+
+const userPoolId = process.env.COGNITO_USER_POOL_ID;
+
+const srp = new SRPClient(userPoolId);
+const SRP_A = srp.calculateA();
+
+console.log("SRP_A : ", SRP_A);
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION_FOR_COGNITO,
 });
-const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
 exports.handler = async (event) => {
   console.log("query string parameters : ", event.queryStringParameters);
@@ -32,8 +44,8 @@ exports.handler = async (event) => {
   }
 
   if (event.queryStringParameters.state !== process.env.MICROSOFT_OAUTH_STATE) {
-    console.log("State does not match.");
-    return sendData(null, "Invalid state parameter", 400);
+    console.log("state is invalid");
+    return sendData(null, "state is invalid", 400);
   }
 
   try {
@@ -65,7 +77,6 @@ exports.handler = async (event) => {
     );
 
     const profile = profileResponse.data;
-
     console.log("user profile from microsoft : ", profile);
 
     const email = profile.mail || profile.userPrincipalName;
@@ -80,7 +91,9 @@ exports.handler = async (event) => {
       Filter: `email = "${email}"`,
     });
 
+    console.log("Sending ListUsersCommand with params: ", userListCommand);
     const userList = await cognitoClient.send(userListCommand);
+    console.log("ListUsersCommand response: ", userList);
 
     if (userList.Users.length === 0) {
       console.log("User not found.");
@@ -122,21 +135,84 @@ exports.handler = async (event) => {
       const linkProviderCommand = new AdminLinkProviderForUserCommand(
         jsonToAddProvider
       );
+      console.log(
+        "Sending AdminLinkProviderForUserCommand with params: ",
+        linkProviderCommand
+      );
       await cognitoClient.send(linkProviderCommand);
+      console.log("AdminLinkProviderForUserCommand sent successfully");
+    } else {
+      console.log("Microsoft provider already linked.");
     }
 
-    const authCommand = new AdminInitiateAuthCommand({
+    const PASSWORD_PLACEHOLDER = "placeholderpassword";
+
+    const initiateAuthParams = {
       UserPoolId: userPoolId,
       ClientId: process.env.COGNITO_APP_CLIENT_ID,
       AuthFlow: "USER_SRP_AUTH",
       AuthParameters: {
         USERNAME: email,
+        SRP_A: SRP_A,
       },
-    });
+    };
 
-    const authResponse = await cognitoClient.send(authCommand);
+    const initiateAuthCommand = new AdminInitiateAuthCommand(
+      initiateAuthParams
+    );
 
-    console.log("auth response : ", authResponse);
+    console.log(
+      "Sending AdminInitiateAuthCommand with params: ",
+      initiateAuthCommand
+    );
+
+    const response = await cognitoClient.send(initiateAuthCommand);
+    console.log("AdminInitiateAuthCommand response: ", response);
+
+    const ChallengeName = response.ChallengeName;
+    const { SRP_B, SALT, SECRET_BLOCK, USER_ID_FOR_SRP } =
+      response.ChallengeParameters;
+
+    const hkdf = srp.getPasswordAuthenticationKey(
+      USER_ID_FOR_SRP,
+      PASSWORD_PLACEHOLDER,
+      SRP_B,
+      SALT
+    );
+
+    console.log("HKFD : ", hkdf);
+
+    const signatureString = calculateSignature(
+      hkdf,
+      userPoolId,
+      USER_ID_FOR_SRP,
+      SECRET_BLOCK,
+      getNowString()
+    );
+
+    const respondToAuthChallengeParams = {
+      UserPoolId: process.env.COGNITO_USER_POOL_ID,
+      ClientId: process.env.COGNITO_APP_CLIENT_ID,
+      ChallengeName: ChallengeName,
+      ChallengeResponses: {
+        USERNAME: email,
+        PASSWORD_CLAIM_SECRET_BLOCK: SECRET_BLOCK,
+        TIMESTAMP: getNowString(),
+        PASSWORD_CLAIM_SIGNATURE: signatureString,
+      },
+    };
+    const respondToAuthChallengeCommand = new RespondToAuthChallengeCommand(
+      respondToAuthChallengeParams
+    );
+    console.log(
+      "Sending RespondToAuthChallengeCommand with params: ",
+      respondToAuthChallengeCommand
+    );
+
+    const authResponse = await cognitoClient.send(
+      respondToAuthChallengeCommand
+    );
+    console.log("RespondToAuthChallengeCommand response: ", authResponse);
 
     const cookies = [
       `idToken=${authResponse.AuthenticationResult.IdToken}; Path=/; HttpOnly`,
@@ -149,6 +225,5 @@ exports.handler = async (event) => {
     return sendToken(cookies, "User logged in successfully", 200);
   } catch (error) {
     console.error("Error message:", error);
-    return sendData(null, "Something went wrong.", 400);
   }
 };
