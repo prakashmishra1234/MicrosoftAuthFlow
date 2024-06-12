@@ -158,13 +158,13 @@ exports.handler = async (event) => {
     console.log("AdminInitiateAuthCommand response: ", response);
 
     const ChallengeName = response.ChallengeName;
-    const session = response.Session;
+    const { Session } = response;
 
     const challengeResponseParams = {
       UserPoolId: process.env.COGNITO_USER_POOL_ID,
       ClientId: process.env.COGNITO_APP_CLIENT_ID,
       ChallengeName: ChallengeName,
-      Session: session,
+      Session: Session,
       ChallengeResponses: {
         USERNAME: email,
         ANSWER: "customAnswer",
