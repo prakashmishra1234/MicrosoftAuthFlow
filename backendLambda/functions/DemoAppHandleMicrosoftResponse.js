@@ -159,6 +159,7 @@ exports.handler = async (event) => {
 
     const ChallengeName = response.ChallengeName;
     const { Session } = response;
+    const { USERNAME } = response.ChallengeParameters;
 
     const challengeResponseParams = {
       UserPoolId: process.env.COGNITO_USER_POOL_ID,
@@ -166,7 +167,7 @@ exports.handler = async (event) => {
       ChallengeName: ChallengeName,
       Session: Session,
       ChallengeResponses: {
-        USERNAME: email,
+        USERNAME: USERNAME,
         ANSWER: "customAnswer",
       },
     };
