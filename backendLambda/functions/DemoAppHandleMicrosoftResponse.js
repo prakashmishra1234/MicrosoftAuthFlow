@@ -1,6 +1,3 @@
-const sendData = require("../utility/sendData");
-const sendToken = require("../utility/sendToken");
-const axios = require("axios");
 const {
   CognitoIdentityProviderClient,
   ListUsersCommand,
@@ -8,22 +5,16 @@ const {
   AdminInitiateAuthCommand,
   RespondToAuthChallengeCommand,
 } = require("@aws-sdk/client-cognito-identity-provider");
-const {
-  SRPClient,
-  getNowString,
-  calculateSignature,
-} = require("amazon-user-pool-srp-client");
 
-const userPoolId = process.env.COGNITO_USER_POOL_ID;
-
-const srp = new SRPClient(userPoolId);
-const SRP_A = srp.calculateA();
-
-console.log("SRP_A : ", SRP_A);
+const sendData = require("../utility/sendData");
+const sendToken = require("../utility/sendToken");
+const axios = require("axios");
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION_FOR_COGNITO,
 });
+
+const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
 exports.handler = async (event) => {
   console.log("query string parameters : ", event.queryStringParameters);
@@ -145,15 +136,12 @@ exports.handler = async (event) => {
       console.log("Microsoft provider already linked.");
     }
 
-    const PASSWORD_PLACEHOLDER = "placeholderpassword";
-
     const initiateAuthParams = {
       UserPoolId: userPoolId,
       ClientId: process.env.COGNITO_APP_CLIENT_ID,
-      AuthFlow: "USER_SRP_AUTH",
+      AuthFlow: "CUSTOM_AUTH",
       AuthParameters: {
         USERNAME: email,
-        SRP_A: SRP_A,
       },
     };
 
@@ -170,39 +158,21 @@ exports.handler = async (event) => {
     console.log("AdminInitiateAuthCommand response: ", response);
 
     const ChallengeName = response.ChallengeName;
-    const { SRP_B, SALT, SECRET_BLOCK, USER_ID_FOR_SRP } =
-      response.ChallengeParameters;
+    const session = response.Session;
 
-    const hkdf = srp.getPasswordAuthenticationKey(
-      USER_ID_FOR_SRP,
-      PASSWORD_PLACEHOLDER,
-      SRP_B,
-      SALT
-    );
-
-    console.log("HKFD : ", hkdf);
-
-    const signatureString = calculateSignature(
-      hkdf,
-      userPoolId,
-      USER_ID_FOR_SRP,
-      SECRET_BLOCK,
-      getNowString()
-    );
-
-    const respondToAuthChallengeParams = {
+    const challengeResponseParams = {
       UserPoolId: process.env.COGNITO_USER_POOL_ID,
       ClientId: process.env.COGNITO_APP_CLIENT_ID,
       ChallengeName: ChallengeName,
+      Session: session,
       ChallengeResponses: {
         USERNAME: email,
-        PASSWORD_CLAIM_SECRET_BLOCK: SECRET_BLOCK,
-        TIMESTAMP: getNowString(),
-        PASSWORD_CLAIM_SIGNATURE: signatureString,
+        ANSWER: "customAnswer",
       },
     };
+
     const respondToAuthChallengeCommand = new RespondToAuthChallengeCommand(
-      respondToAuthChallengeParams
+      challengeResponseParams
     );
     console.log(
       "Sending RespondToAuthChallengeCommand with params: ",
