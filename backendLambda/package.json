@@ -10,8 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.592.0",
-    "amazon-user-pool-srp-client": "^1.0.4",
-    "axios": "^1.7.2",
-    "jsbn": "^1.1.0"
+    "axios": "^1.7.2"
   }
 }

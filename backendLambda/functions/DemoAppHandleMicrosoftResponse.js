@@ -5,10 +5,10 @@ const {
   AdminInitiateAuthCommand,
   RespondToAuthChallengeCommand,
 } = require("@aws-sdk/client-cognito-identity-provider");
+const axios = require("axios");
 
 const sendData = require("../utility/sendData");
 const sendToken = require("../utility/sendToken");
-const axios = require("axios");
 
 const cognitoClient = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION_FOR_COGNITO,
@@ -17,7 +17,7 @@ const cognitoClient = new CognitoIdentityProviderClient({
 const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
 exports.handler = async (event) => {
-  console.log("query string parameters : ", event.queryStringParameters);
+  console.log("Query string parameters:", event.queryStringParameters);
 
   if (!event.queryStringParameters) {
     console.log("Invalid request body.");
@@ -25,18 +25,18 @@ exports.handler = async (event) => {
   }
 
   if (!event.queryStringParameters.code) {
-    console.log("code is not present");
+    console.log("Code is not present");
     return sendData(null, "Code is required", 400);
   }
 
   if (!event.queryStringParameters.state) {
-    console.log("state is not present");
+    console.log("State is not present");
     return sendData(null, "State is required", 400);
   }
 
   if (event.queryStringParameters.state !== process.env.MICROSOFT_OAUTH_STATE) {
-    console.log("state is invalid");
-    return sendData(null, "state is invalid", 400);
+    console.log("State is invalid");
+    return sendData(null, "State is invalid", 400);
   }
 
   try {
@@ -56,7 +56,7 @@ exports.handler = async (event) => {
       }
     );
 
-    console.log("response in exchange of code : ", tokenResponse);
+    console.log("Response in exchange of code:", tokenResponse);
 
     const { access_token, id_token } = tokenResponse.data;
 
@@ -68,7 +68,7 @@ exports.handler = async (event) => {
     );
 
     const profile = profileResponse.data;
-    console.log("user profile from microsoft : ", profile);
+    console.log("User profile from Microsoft:", profile);
 
     const email = profile.mail || profile.userPrincipalName;
 
@@ -82,16 +82,16 @@ exports.handler = async (event) => {
       Filter: `email = "${email}"`,
     });
 
-    console.log("Sending ListUsersCommand with params: ", userListCommand);
+    console.log("Sending ListUsersCommand with params:", userListCommand);
     const userList = await cognitoClient.send(userListCommand);
-    console.log("ListUsersCommand response: ", userList);
+    console.log("ListUsersCommand response:", userList);
 
     if (userList.Users.length === 0) {
       console.log("User not found.");
       return sendData(null, "User not found.", 200);
     }
 
-    console.log("user from cognito : ", userList.Users[0]);
+    console.log("User from Cognito:", userList.Users[0]);
 
     const cognitoUser = userList.Users[0];
     const identitiesAttribute = cognitoUser.Attributes.find(
@@ -121,13 +121,13 @@ exports.handler = async (event) => {
         UserPoolId: userPoolId,
       };
 
-      console.log("Json to add provider : ", jsonToAddProvider);
+      console.log("JSON to add provider:", jsonToAddProvider);
 
       const linkProviderCommand = new AdminLinkProviderForUserCommand(
         jsonToAddProvider
       );
       console.log(
-        "Sending AdminLinkProviderForUserCommand with params: ",
+        "Sending AdminLinkProviderForUserCommand with params:",
         linkProviderCommand
       );
       await cognitoClient.send(linkProviderCommand);
@@ -150,16 +150,15 @@ exports.handler = async (event) => {
     );
 
     console.log(
-      "Sending AdminInitiateAuthCommand with params: ",
+      "Sending AdminInitiateAuthCommand with params:",
       initiateAuthCommand
     );
 
     const response = await cognitoClient.send(initiateAuthCommand);
-    console.log("AdminInitiateAuthCommand response: ", response);
+    console.log("AdminInitiateAuthCommand response:", response);
 
-    const ChallengeName = response.ChallengeName;
-    const { Session } = response;
-    const { USERNAME } = response.ChallengeParameters;
+    const { ChallengeName, Session, ChallengeParameters } = response;
+    const { SECRET_BLOCK, USER_ID_FOR_SRP } = ChallengeParameters;
 
     const challengeResponseParams = {
       UserPoolId: process.env.COGNITO_USER_POOL_ID,
@@ -167,8 +166,8 @@ exports.handler = async (event) => {
       ChallengeName: ChallengeName,
       Session: Session,
       ChallengeResponses: {
-        USERNAME: USERNAME,
-        ANSWER: "customAnswer",
+        USERNAME: email,
+        ANSWER: "customAnswer", // The answer that your Lambda function expects
       },
     };
 
@@ -176,14 +175,14 @@ exports.handler = async (event) => {
       challengeResponseParams
     );
     console.log(
-      "Sending RespondToAuthChallengeCommand with params: ",
+      "Sending RespondToAuthChallengeCommand with params:",
       respondToAuthChallengeCommand
     );
 
     const authResponse = await cognitoClient.send(
       respondToAuthChallengeCommand
     );
-    console.log("RespondToAuthChallengeCommand response: ", authResponse);
+    console.log("RespondToAuthChallengeCommand response:", authResponse);
 
     const cookies = [
       `idToken=${authResponse.AuthenticationResult.IdToken}; Path=/; HttpOnly`,
@@ -191,10 +190,11 @@ exports.handler = async (event) => {
       `refreshToken=${authResponse.AuthenticationResult.RefreshToken}; Path=/; HttpOnly`,
     ];
 
-    console.log("cookies : ", cookies);
+    console.log("Cookies:", cookies);
 
     return sendToken(cookies, "User logged in successfully", 200);
   } catch (error) {
     console.error("Error message:", error);
+    return sendData(null, `Authentication failed: ${error.message}`, 400);
   }
 };
