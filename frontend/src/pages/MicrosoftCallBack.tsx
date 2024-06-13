@@ -35,8 +35,6 @@ const MicrosoftCallBack = () => {
         {
           params: {
             code: params.code,
-            state: params.state,
-            // srp_a: A.toString(16),
           },
         }
       )
