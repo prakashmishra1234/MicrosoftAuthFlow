@@ -10,7 +10,7 @@ const Login = () => {
         "https://7an16zjr4a.execute-api.ap-south-1.amazonaws.com/dev/auth/microsoft"
       )
       .then((res) => {
-        window.location.href = res.data.data;
+        window.location.href = res.data.body;
       })
       .catch((err) => {
         console.log(err);
