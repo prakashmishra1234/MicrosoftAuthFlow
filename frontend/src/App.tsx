@@ -2,6 +2,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import MicrosoftCallBack from "./pages/MicrosoftCallBack";
+import GoogleCallback from "./pages/GoogleCallback";
 
 const router = createBrowserRouter([
   {
@@ -15,6 +16,10 @@ const router = createBrowserRouter([
   {
     path: "/msresponse",
     element: <MicrosoftCallBack />,
+  },
+  {
+    path: "/googlecallback",
+    element: <GoogleCallback />,
   },
 ]);
 
